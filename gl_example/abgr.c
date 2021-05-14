@@ -53,6 +53,9 @@
 #include <stdio.h>
 #include <GL/glut.h>
 
+#include <sys/types.h>
+#include <unistd.h>
+
 GLenum doubleBuffer;
 GLubyte ubImage[65536];
 
@@ -71,25 +74,29 @@ Init(void)
 
   /* Create image */
   img = ubImage;
-  for (j = 0; j < 32 * imgWidth; j++) {
+  for (j = 0; j < 32 * imgWidth; j++)
+  {
     *img++ = 0xff;
     *img++ = 0x00;
     *img++ = 0x00;
     *img++ = 0xff;
   }
-  for (j = 0; j < 32 * imgWidth; j++) {
+  for (j = 0; j < 32 * imgWidth; j++)
+  {
     *img++ = 0xff;
     *img++ = 0x00;
     *img++ = 0xff;
     *img++ = 0x00;
   }
-  for (j = 0; j < 32 * imgWidth; j++) {
+  for (j = 0; j < 32 * imgWidth; j++)
+  {
     *img++ = 0xff;
     *img++ = 0xff;
     *img++ = 0x00;
     *img++ = 0x00;
   }
-  for (j = 0; j < 32 * imgWidth; j++) {
+  for (j = 0; j < 32 * imgWidth; j++)
+  {
     *img++ = 0x00;
     *img++ = 0xff;
     *img++ = 0x00;
@@ -101,14 +108,14 @@ Init(void)
 static void
 Key(unsigned char key, int x, int y)
 {
-  switch (key) {
+  switch (key)
+  {
   case 27:
     exit(0);
   }
 }
 
-void
-TexFunc(void)
+void TexFunc(void)
 {
   glEnable(GL_TEXTURE_2D);
   glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -118,7 +125,7 @@ TexFunc(void)
 
 #if GL_EXT_abgr
   glTexImage2D(GL_TEXTURE_2D, 0, 3, 128, 128, 0, GL_ABGR_EXT,
-    GL_UNSIGNED_BYTE, ubImage);
+               GL_UNSIGNED_BYTE, ubImage);
 
   glBegin(GL_POLYGON);
   glTexCoord2f(1.0, 1.0);
@@ -133,7 +140,7 @@ TexFunc(void)
 #endif
 
   glTexImage2D(GL_TEXTURE_2D, 0, 3, 128, 128, 0, GL_RGBA,
-    GL_UNSIGNED_BYTE, ubImage);
+               GL_UNSIGNED_BYTE, ubImage);
 
   glBegin(GL_POLYGON);
   glTexCoord2f(1.0, 1.0);
@@ -166,9 +173,12 @@ Draw(void)
 
   TexFunc();
 
-  if (doubleBuffer) {
+  if (doubleBuffer)
+  {
     glutSwapBuffers();
-  } else {
+  }
+  else
+  {
     glFlush();
   }
 }
@@ -180,17 +190,20 @@ Args(int argc, char **argv)
 
   doubleBuffer = GL_TRUE;
 
-  for (i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "-sb") == 0) {
+  for (i = 1; i < argc; i++)
+  {
+    if (strcmp(argv[i], "-sb") == 0)
+    {
       doubleBuffer = GL_FALSE;
-    } else if (strcmp(argv[i], "-db") == 0) {
+    }
+    else if (strcmp(argv[i], "-db") == 0)
+    {
       doubleBuffer = GL_TRUE;
     }
   }
 }
 
-int
-main(int argc, char **argv)
+int main(int argc, char **argv)
 {
   GLenum type;
 
@@ -201,7 +214,8 @@ main(int argc, char **argv)
   type |= (doubleBuffer) ? GLUT_DOUBLE : GLUT_SINGLE;
   glutInitDisplayMode(type);
   glutCreateWindow("ABGR extension");
-  if (!glutExtensionSupported("GL_EXT_abgr")) {
+  if (!glutExtensionSupported("GL_EXT_abgr"))
+  {
     printf("Couldn't find abgr extension.\n");
     exit(0);
   }
@@ -212,6 +226,11 @@ main(int argc, char **argv)
   Init();
   glutKeyboardFunc(Key);
   glutDisplayFunc(Draw);
+
+  char buf[1024];
+  sprintf(buf, "lsof -p %d", getpid());
+  system(buf);
+
   glutMainLoop();
-  return 0;             /* ANSI C requires main to return int. */
+  return 0; /* ANSI C requires main to return int. */
 }
