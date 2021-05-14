@@ -50,7 +50,7 @@ int main(int argc, char **argv)
     glClear(GL_COLOR_BUFFER_BIT);
     glXSwapBuffers(dpy, win);
 
-    sleep(1);
+    sleep(100);
 
     ctx = glXGetCurrentContext();
     glXDestroyContext(dpy, ctx);
