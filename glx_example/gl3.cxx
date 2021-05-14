@@ -114,7 +114,7 @@ int main(int argc, char *argv[])
       glXGetFBConfigAttrib(display, fbc[i], GLX_SAMPLE_BUFFERS, &samp_buf);
       glXGetFBConfigAttrib(display, fbc[i], GLX_SAMPLES, &samples);
 
-      printf("  Matching fbconfig %d, visual ID 0x%2x: SAMPLE_BUFFERS = %d,"
+      printf("  Matching fbconfig %d, visual ID 0x%2lx: SAMPLE_BUFFERS = %d,"
              " SAMPLES = %d\n",
              i, vi->visualid, samp_buf, samples);
 
@@ -133,7 +133,7 @@ int main(int argc, char *argv[])
 
   // Get a visual
   XVisualInfo *vi = glXGetVisualFromFBConfig(display, bestFbc);
-  printf("Chosen visual ID = 0x%x\n", vi->visualid);
+  printf("Chosen visual ID = 0x%lx\n", vi->visualid);
 
   printf("Creating colormap\n");
   XSetWindowAttributes swa;
