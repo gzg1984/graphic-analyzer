@@ -3,6 +3,11 @@
 #include <unistd.h>
 #include <iostream>
 
+
+//for getpid
+#include <sys/types.h>
+
+
 #define GLX_CONTEXT_MAJOR_VERSION_ARB 0x2091
 #define GLX_CONTEXT_MINOR_VERSION_ARB 0x2092
 typedef GLXContext (*GLXCREATECONTEXTATTRIBSARBPROC)(Display *, GLXFBConfig, GLXContext, Bool, const int *);
@@ -49,6 +54,10 @@ int main(int argc, char **argv)
     glClearColor(1, 0.5, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
     glXSwapBuffers(dpy, win);
+
+    char buf[1024];
+    sprintf(buf, "lsof -p %d", getpid());
+    system(buf);
 
     sleep(100);
 
