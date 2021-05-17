@@ -13,9 +13,11 @@ clean:
 
 
 run:
-	# weston
+	# if weston is started by root
 	# this program only work in root
 	# ./hello_wayland
 	# or
 	# sudo XDG_RUNTIME_DIR=/run/user/0  ./hello_wayland
+	# if weston is starated by normal user
+	# this program work with the same normal user
 
