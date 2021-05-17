@@ -14,4 +14,8 @@ clean:
 
 run:
 	# weston
+	# this program only work in root
 	# ./hello_wayland
+	# or
+	# sudo XDG_RUNTIME_DIR=/run/user/0  ./hello_wayland
+
