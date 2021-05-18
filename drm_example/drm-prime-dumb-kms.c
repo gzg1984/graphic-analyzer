@@ -67,11 +67,18 @@ int main()
 	/* Let's see what we can use through this drm node */
 	drm_resources = drmModeGetResources(drm_fd);
 
+	if (drm_resources == NULL ) {
+		LOG("drmModeGetResources failed : %s\n",strerror(errno));
+		goto no_valid_connector;
+	}
+
+	printf("drm_resources->count_connectors is %d\n",drm_resources->count_connectors);
 	/* Get a valid connector. A valid connector is one that's connected */
 	for (int_fast32_t c = 0; c < drm_resources->count_connectors; c++) {
 		valid_connector =
 			drmModeGetConnector(drm_fd, drm_resources->connectors[c]);
 
+		printf("drm_resources->connectors[%ld] is %d\n",c,valid_connector->connection);
 		if (valid_connector->connection == DRM_MODE_CONNECTED)
 			break;
 
