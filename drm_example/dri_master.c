@@ -138,6 +138,7 @@ int main()
 		int j;
 		for (j=0;j<res.count_connectors;j++)
 		{
+			printf("connector %d\n",j);
 			int col=(rand()%0x00ffffff)&0x00ff00ff;
 			for (y=0;y<fb_h[j];y++)
 				for (x=0;x<fb_w[j];x++)
@@ -146,7 +147,7 @@ int main()
 					*(((uint32_t*)fb_base[j])+location)=col;
 				}
 		}
-		usleep(100000);
+		usleep(10000);
 	}
 
 	return 0;
