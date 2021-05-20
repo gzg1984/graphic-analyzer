@@ -10,6 +10,11 @@ modeset:modeset.c
 dri:dri_master.c
 	gcc -o dri dri_master.c
 
+
+kms:kms-pageflip.c
+	gcc -g -o kms kms-pageflip.c  `pkg-config libdrm --cflags --libs`
+
+
 clean:
 	rm -f drm
 	rm -f modeset

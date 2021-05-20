@@ -57,10 +57,13 @@ int main()
 	int ret = 0;
 
 	/* Open the DRM device node and get a File Descriptor */
-	int const drm_fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
+	char path[32]="/dev/dri/card1";
+	int const drm_fd = open(path, O_RDWR | O_CLOEXEC);
+	//int const drm_fd = drmOpen(path, "0");
 
 	if (drm_fd < 0) {
-		LOG("Could not open /dev/dri/card0 : %m\n");
+		printf("%s\n",path);
+		LOG("Could not open : %m\n");
 		goto could_not_open_drm_fd;
 	}
 
