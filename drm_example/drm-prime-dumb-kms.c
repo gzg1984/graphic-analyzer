@@ -57,7 +57,7 @@ int main()
 	int ret = 0;
 
 	/* Open the DRM device node and get a File Descriptor */
-	char path[32]="/dev/dri/card1";
+	char path[32]="/dev/dri/card0";
 	int const drm_fd = open(path, O_RDWR | O_CLOEXEC);
 	//int const drm_fd = drmOpen(path, "0");
 

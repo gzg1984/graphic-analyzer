@@ -25,7 +25,7 @@ main (int32_t argc, char* argv[])
 {
    bool res;
  
-   int32_t fd = open ("/dev/dri/renderD128", O_RDWR);
+   int32_t fd = open ("/dev/dri/renderD129", O_RDWR);
    assert (fd > 0);
  
    struct gbm_device *gbm = gbm_create_device (fd);
@@ -41,6 +41,7 @@ main (int32_t argc, char* argv[])
    const char *egl_extension_st = eglQueryString (egl_dpy, EGL_EXTENSIONS);
    assert (strstr (egl_extension_st, "EGL_KHR_create_context") != NULL);
    assert (strstr (egl_extension_st, "EGL_KHR_surfaceless_context") != NULL);
+   printf("egl_extension_st:%s\n",egl_extension_st);
  
    static const EGLint config_attribs[] = {
       EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR,
