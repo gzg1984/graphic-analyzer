@@ -314,25 +314,6 @@ struct drm_mode_crtc test_crtc_feature(int drm_fd, __u32 crtc_id)
 }
 
 
-struct drm_mode_crtc test_encoder_feature(int drm_fd, __u32 encoder_id)
-{
-	struct drm_mode_get_encoder enc={0};
-	enc.encoder_id=encoder_id;
-	int result=	drmIoctl(drm_fd, DRM_IOCTL_MODE_GETENCODER, &enc);	//get encoder
-	if ( result == 0 )
-	{
-		successtip();
-		printf("DRM_IOCTL_MODE_GETENCODER [%d] success:[%d]\n",
-				encoder_id,enc.crtc_id);
-		return test_crtc_feature(drm_fd,enc.crtc_id);
-	}
-	else
-	{
-		failtip();
-		printf("DRM_IOCTL_MODE_GETENCODER failed : %d, %m \n",result);
-	}
-
-}
 void display_dumbbuf_to_crtc(int drm_fd,struct drm_mode_crtc crtc, __u32 fb_id ,uint64_t connector_id,struct drm_mode_modeinfo conn_mode)
 {
 	//------------------------------------------------------------------------------
@@ -348,12 +329,84 @@ void display_dumbbuf_to_crtc(int drm_fd,struct drm_mode_crtc crtc, __u32 fb_id ,
 	crtc.count_connectors=1;
 	crtc.mode=conn_mode;
 	crtc.mode_valid=1;
-	drmIoctl(drm_fd, DRM_IOCTL_MODE_SETCRTC, &crtc);
+	int ret = drmIoctl(drm_fd, DRM_IOCTL_MODE_SETCRTC, &crtc);
+	if ( ret == 0 )
+	{
+		successtip();
+		printf("DRM_IOCTL_MODE_SETCRTC success\n");
+	}
+	else
+	{
+		failtip();
+		printf("DRM_IOCTL_MODE_SETCRTC failed : %d, %m \n",ret);
+	}
+}
+void test_one_encoder_and_crtc(int drm_fd, __u32 encoder_id,__u32 fb_id,uint32_t connector_id,struct drm_mode_modeinfo conn_mode)
+{
+	struct drm_mode_get_encoder enc={0};
+	enc.encoder_id=encoder_id;
+	int result = drmIoctl(drm_fd, DRM_IOCTL_MODE_GETENCODER, &enc);	//get encoder
+	if ( result == 0 )
+	{
+		successtip();
+		printf("DRM_IOCTL_MODE_GETENCODER [%d(0x%x)] success: crtc ID [%d]\n",
+				encoder_id,encoder_id,enc.crtc_id);
+		if ( enc.crtc_id > 0 )
+		{
+			struct drm_mode_crtc crtc = test_crtc_feature(drm_fd,enc.crtc_id);
+			printf("Displaying Frame Buffer [%d(0x%x)] in dumb-buff to Crtc [%d] via connector [%d(0x%x)]\n",
+					fb_id,fb_id,crtc.crtc_id,connector_id,connector_id);
+			display_dumbbuf_to_crtc(drm_fd,crtc,fb_id,connector_id,conn_mode);
+		}
+	}
+	else
+	{
+		failtip();
+		printf("DRM_IOCTL_MODE_GETENCODER %d failed : %d, %m \n",encoder_id,result);
+	}
+}
+void test_encoder_feature(int drm_fd, __u32 encoder_id, __u32 count_encoders,uint32_t* conn_encoders,__u32 fb_id,uint32_t connector_id,struct drm_mode_modeinfo conn_mode)
+{
+
+	int i = 0;
+	for(i = 0; i < count_encoders ; i++)
+	{
+		printf("Found Encoder [%d(0x%x)] \n", 
+				conn_encoders[i],conn_encoders[i]);
+		test_one_encoder_and_crtc(drm_fd,conn_encoders[i],fb_id,connector_id,conn_mode);
+	}
+
+	test_one_encoder_and_crtc(drm_fd,encoder_id,fb_id,connector_id,conn_mode);
+
+	/*
+	struct drm_mode_get_encoder enc={0};
+	enc.encoder_id=encoder_id;
+	int result = drmIoctl(drm_fd, DRM_IOCTL_MODE_GETENCODER, &enc);	//get encoder
+	if ( result == 0 )
+	{
+		successtip();
+		printf("DRM_IOCTL_MODE_GETENCODER [%d] success:[%d]\n",
+				encoder_id,enc.crtc_id);
+		struct drm_mode_crtc crtc = test_crtc_feature(drm_fd,enc.crtc_id);
+		if ( crtc.crtc_id != -1 )
+		{
+			printf("Displaying Frame Buffer [%d(0x%x)] in dumb-buff to Crtc [%d] via connector [%d(0x%x)]\n",
+					fb_id,fb_id,crtc.crtc_id,connector_id,connector_id);
+			display_dumbbuf_to_crtc(drm_fd,crtc,fb_id,connector_id,conn_mode);
+		}
+	}
+	else
+	{
+		failtip();
+		printf("DRM_IOCTL_MODE_GETENCODER %d failed : %d, %m \n",encoder_id,result);
+	}
+	*/
+
 }
 void test_getconnection_info(int drm_fd,uint32_t connector_id)
 {
 	struct drm_mode_modeinfo conn_mode_buf[20]={0};
-	uint64_t	conn_prop_buf[20]={0},
+	uint32_t	conn_prop_buf[20]={0},
 			conn_propval_buf[20]={0},
 			conn_enc_buf[20]={0};
 
@@ -386,17 +439,24 @@ void test_getconnection_info(int drm_fd,uint32_t connector_id)
 	conn.props_ptr=(uint64_t)conn_prop_buf;
 	conn.prop_values_ptr=(uint64_t)conn_propval_buf;
 	conn.encoders_ptr=(uint64_t)conn_enc_buf; //useless ? is it same as encoder_id ?
-	drmIoctl(drm_fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn);	//get connector resources
+	int ret = drmIoctl(drm_fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn);	//get connector resources
 
-	struct drm_mode_crtc crtc = test_encoder_feature(drm_fd ,conn.encoder_id);
+	if ( ret == 0 )
+	{
+		successtip();
+		printf("DRM_IOCTL_MODE_GETCONNECTOR [%d] success\n", connector_id);
 
-	printf("Creating Dump Buffer for Buf0\n");
-	__u32 fb_id = test_create_dump_buf(drm_fd, conn_mode_buf[0].hdisplay, conn_mode_buf[0].vdisplay);
+		printf("Creating Dump Buffer for Buf0\n");
+		__u32 fb_id = test_create_dump_buf(drm_fd, conn_mode_buf[0].hdisplay, conn_mode_buf[0].vdisplay);
 
-	printf("Displaying Frame Buffer [%d(0x%x)] in dumb-buff to Crtc [%d] via connector [%d(0x%x)]\n",
-			fb_id,fb_id,crtc.crtc_id,connector_id,connector_id);
-	display_dumbbuf_to_crtc(drm_fd,crtc,fb_id,connector_id,conn_mode_buf[0]);
+		test_encoder_feature(drm_fd ,conn.encoder_id, conn.count_encoders, conn_enc_buf,fb_id,connector_id,conn_mode_buf[0]);
 
+	}
+	else
+	{
+		failtip();
+		printf("DRM_IOCTL_MODE_GETCONNECTOR [%d] failed : %d, %m \n",connector_id,ret);
+	}
 }
 
 void test_getresources(int drm_fd)
