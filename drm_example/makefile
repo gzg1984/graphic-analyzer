@@ -1,5 +1,5 @@
 
-all:drm modeset dri drm_magic
+all:drm modeset dri_master drm_magic
 
 drm_magic:drm_magic.c
 	gcc -g -o $@ $^  `pkg-config libdrm --cflags --libs`
@@ -10,8 +10,8 @@ drm:drm-prime-dumb-kms.c
 modeset:modeset.c
 	gcc -g -o modeset modeset.c  `pkg-config libdrm --cflags --libs`
 
-dri:dri_master.c
-	gcc -o dri dri_master.c
+dri_master:dri_master.c
+	gcc -o  $@ $^ 
 
 
 kms:kms-pageflip.c
@@ -21,5 +21,6 @@ kms:kms-pageflip.c
 clean:
 	rm -f drm
 	rm -f modeset
-	rm -f dri
+	rm -f dri_master
+	rm -f drm_magic
 

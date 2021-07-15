@@ -40,6 +40,7 @@ int main()
 
 	struct drm_mode_card_res res={0};
 
+	/*
 	//Become the "master" of the DRI device
 	int result = ioctl(dri_fd, DRM_IOCTL_SET_MASTER, 0);
 	if ( result == 0 )
@@ -51,6 +52,7 @@ int main()
 		printf("DRM_IOCTL_SET_MASTER failed : %d \n",result);
 		return 255;
 	}
+	*/
 
 	//Get resource counts
 	ioctl(dri_fd, DRM_IOCTL_MODE_GETRESOURCES, &res);
@@ -153,8 +155,10 @@ int main()
 		ioctl(dri_fd, DRM_IOCTL_MODE_SETCRTC, &crtc);
 	}
 
+	/*
 	printf("Stop being the \"master\" of the DRI device : %s\n",STATIC_DEVICE_NAME);
 	ioctl(dri_fd, DRM_IOCTL_DROP_MASTER, 0);
+	*/
 
 	int x,y;
 	for (i=0;i<100;i++)
