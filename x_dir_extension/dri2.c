@@ -248,8 +248,8 @@ int main(int argc, char** argv)
 
 	int screen = DefaultScreen(display);
 
-	struct windowWithDeletePackage container_window;
-	createContainerWindowWithVMDelete(&container_window,display,screen);
+	//struct windowWithDeletePackage container_window;
+	//createContainerWindowWithVMDelete(&container_window,display,screen);
 
 	char *device;
 	char *driver;

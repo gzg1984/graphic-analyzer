@@ -1,5 +1,8 @@
 
-all:drm modeset dri
+all:drm modeset dri drm_magic
+
+drm_magic:drm_magic.c
+	gcc -g -o $@ $^  `pkg-config libdrm --cflags --libs`
 
 drm:drm-prime-dumb-kms.c
 	gcc -g -o drm drm-prime-dumb-kms.c  `pkg-config libdrm --cflags --libs`

@@ -6,13 +6,28 @@
 #include <drm/drm.h>
 #include <drm/drm_mode.h>
 
+#include <unistd.h>
+#include <stdlib.h>
+
+#define STATIC_DEVICE_NAME "/dev/dri/card0"
+//#define STATIC_DEVICE_NAME "/dev/dri/renderD128"
+
 int main()
 {
 //------------------------------------------------------------------------------
 //Opening the DRI device
 //------------------------------------------------------------------------------
 
-	int dri_fd  = open("/dev/dri/card0",O_RDWR | O_CLOEXEC);
+	int dri_fd  = open(STATIC_DEVICE_NAME,O_RDWR | O_CLOEXEC);
+	if ( dri_fd  > 0 )
+	{
+		printf("Open %s success\n" , STATIC_DEVICE_NAME);
+	}
+	else
+	{
+		printf("Open %s failed\n" , STATIC_DEVICE_NAME);
+		return 255;
+	}
 
 //------------------------------------------------------------------------------
 //Kernel Mode Setting (KMS)
@@ -26,7 +41,16 @@ int main()
 	struct drm_mode_card_res res={0};
 
 	//Become the "master" of the DRI device
-	ioctl(dri_fd, DRM_IOCTL_SET_MASTER, 0);
+	int result = ioctl(dri_fd, DRM_IOCTL_SET_MASTER, 0);
+	if ( result == 0 )
+	{
+		printf("DRM_IOCTL_SET_MASTER success\n");
+	}
+	else
+	{
+		printf("DRM_IOCTL_SET_MASTER failed : %d \n",result);
+		return 255;
+	}
 
 	//Get resource counts
 	ioctl(dri_fd, DRM_IOCTL_MODE_GETRESOURCES, &res);
@@ -109,7 +133,7 @@ int main()
 //------------------------------------------------------------------------------
 
 		printf("%d : mode: %d, prop: %d, enc: %d\n",conn.connection,conn.count_modes,conn.count_props,conn.count_encoders);
-		printf("modes: %dx%d FB: %d\n",conn_mode_buf[0].hdisplay,conn_mode_buf[0].vdisplay,fb_base[i]);
+		printf("modes: %dx%d FB: %p\n",conn_mode_buf[0].hdisplay,conn_mode_buf[0].vdisplay,fb_base[i]);
 
 		struct drm_mode_get_encoder enc={0};
 
@@ -129,7 +153,7 @@ int main()
 		ioctl(dri_fd, DRM_IOCTL_MODE_SETCRTC, &crtc);
 	}
 
-	//Stop being the "master" of the DRI device
+	printf("Stop being the \"master\" of the DRI device : %s\n",STATIC_DEVICE_NAME);
 	ioctl(dri_fd, DRM_IOCTL_DROP_MASTER, 0);
 
 	int x,y;
