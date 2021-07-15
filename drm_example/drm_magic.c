@@ -10,6 +10,7 @@
 
 
 
+
 #include <stdio.h>
 
 
@@ -17,6 +18,11 @@
 
 #include <string.h>
 #include <errno.h>
+
+#include <sys/mman.h>
+
+#include <stdlib.h>
+
 
 const char pathlist[4][32]={
 	"/dev/dri/card0",
@@ -195,106 +201,201 @@ void test_version_feature(int drm_fd)
 		printf("DRM_IOCTL_SET_MASTER failed : %d, %m \n",result);
 	}
 }
+__u32 test_create_framebuffer(int drm_fd,const struct drm_mode_create_dumb create_dumb)
+{
+	struct drm_mode_fb_cmd cmd_dumb={0};
+	cmd_dumb.width=create_dumb.width;
+	cmd_dumb.height=create_dumb.height;
+	cmd_dumb.bpp=create_dumb.bpp;
+	cmd_dumb.pitch=create_dumb.pitch;
+	cmd_dumb.depth=24;
+	cmd_dumb.handle=create_dumb.handle;
+	int result = drmIoctl(drm_fd,DRM_IOCTL_MODE_ADDFB,&cmd_dumb);
+	if ( result == 0 )
+	{
+		successtip();
+		printf("DRM_IOCTL_MODE_ADDFB success\n");
+	}
+	else
+	{
+		failtip();
+		printf("DRM_IOCTL_MODE_ADDFB failed : %d, %m \n",result);
+	}
+	return cmd_dumb.fb_id;
+}
+void test_map_dumb(int drm_fd,const struct drm_mode_create_dumb create_dumb)
+{
+	void *fb_base;
+	long fb_w;
+	long fb_h;
+	struct drm_mode_map_dumb map_dumb={0};
+	map_dumb.handle=create_dumb.handle;
+	int result = drmIoctl(drm_fd,DRM_IOCTL_MODE_MAP_DUMB,&map_dumb);
+	if ( result == 0 )
+	{
+		successtip();
+		printf("DRM_IOCTL_MODE_MAP_DUMB success\n");
+	}
+	else
+	{
+		failtip();
+		printf("DRM_IOCTL_MODE_MAP_DUMB failed : %d, %m \n",result);
+		return;
+	}
+
+
+	printf("Trying put random color\n");
+
+	fb_base = mmap(0, create_dumb.size, PROT_READ | PROT_WRITE, MAP_SHARED, drm_fd, map_dumb.offset);
+	fb_w=create_dumb.width;
+	fb_h=create_dumb.height;
+
+	int col=(rand()%0x00ffffff)&0x00ff00ff;
+
+	int x,y;
+	for (y=0;y<fb_h;y++)
+		for (x=0;x<fb_w;x++)
+		{
+			int location=y*(fb_w) + x;
+			*(((uint32_t*)fb_base)+location)=col;
+		}
+	printf("End put random color\n");
+}
+__u32 test_create_dump_buf(int drm_fd , __u32 width, __u32 height)
+{
+	//------------------------------------------------------------------------------
+	//Creating a dumb buffer
+	//------------------------------------------------------------------------------
+	struct drm_mode_create_dumb create_dumb={0};
+
+	//If we create the buffer later, we can get the size of the screen first.
+	//This must be a valid mode, so it's probably best to do this after we find
+	//a valid crtc with modes.
+	create_dumb.width = width;
+	create_dumb.height = height;
+	create_dumb.bpp = 32;
+	create_dumb.flags = 0;
+	create_dumb.pitch = 0;
+	create_dumb.size = 0;
+	create_dumb.handle = 0;
+	printf("Creating Dump Buffer width %d, height %d\n",width,height);
+	int result = drmIoctl(drm_fd, DRM_IOCTL_MODE_CREATE_DUMB, &create_dumb);
+	if ( result == 0 )
+	{
+		successtip();
+		printf("DRM_IOCTL_MODE_CREATE_DUMB success\n");
+		test_map_dumb(drm_fd,create_dumb);
+		return test_create_framebuffer(drm_fd,create_dumb);
+	}
+	else
+	{
+		failtip();
+		printf("DRM_IOCTL_MODE_CREATE_DUMB failed : %d, %m \n",result);
+	}
+}
+
+struct drm_mode_crtc test_crtc_feature(int drm_fd, __u32 crtc_id)
+{
+	struct drm_mode_crtc crtc={0};
+
+	crtc.crtc_id=crtc_id;
+	int result =	drmIoctl(drm_fd, DRM_IOCTL_MODE_GETCRTC, &crtc);
+	if ( result == 0 )
+	{
+		successtip();
+		printf("DRM_IOCTL_MODE_GETCRTC [%d] success\n", crtc_id);
+	}
+	else
+	{
+		failtip();
+		printf("DRM_IOCTL_MODE_GETCRTC failed : %d, %m \n",result);
+	}
+	return crtc;
+}
+
+
+struct drm_mode_crtc test_encoder_feature(int drm_fd, __u32 encoder_id)
+{
+	struct drm_mode_get_encoder enc={0};
+	enc.encoder_id=encoder_id;
+	int result=	drmIoctl(drm_fd, DRM_IOCTL_MODE_GETENCODER, &enc);	//get encoder
+	if ( result == 0 )
+	{
+		successtip();
+		printf("DRM_IOCTL_MODE_GETENCODER [%d] success:[%d]\n",
+				encoder_id,enc.crtc_id);
+		return test_crtc_feature(drm_fd,enc.crtc_id);
+	}
+	else
+	{
+		failtip();
+		printf("DRM_IOCTL_MODE_GETENCODER failed : %d, %m \n",result);
+	}
+
+}
+void display_dumbbuf_to_crtc(int drm_fd,struct drm_mode_crtc crtc, __u32 fb_id ,uint64_t connector_id,struct drm_mode_modeinfo conn_mode)
+{
+	//------------------------------------------------------------------------------
+	//Kernel Mode Setting (KMS)
+	//------------------------------------------------------------------------------
+
+	//		printf("%d : mode: %d, prop: %d, enc: %d\n",conn.connection,conn.count_modes,conn.count_props,conn.count_encoders);
+	//		printf("modes: %dx%d FB: %p\n",conn_mode_buf[0].hdisplay,conn_mode_buf[0].vdisplay,fb_base[i]);
+
+	//crtc.fb_id=cmd_dumb.fb_id;
+	crtc.fb_id=fb_id;
+	crtc.set_connectors_ptr=(uint64_t)&connector_id;
+	crtc.count_connectors=1;
+	crtc.mode=conn_mode;
+	crtc.mode_valid=1;
+	drmIoctl(drm_fd, DRM_IOCTL_MODE_SETCRTC, &crtc);
+}
 void test_getconnection_info(int drm_fd,uint32_t connector_id)
 {
+	struct drm_mode_modeinfo conn_mode_buf[20]={0};
+	uint64_t	conn_prop_buf[20]={0},
+			conn_propval_buf[20]={0},
+			conn_enc_buf[20]={0};
 
+	struct drm_mode_get_connector conn={0};
+
+	conn.connector_id=connector_id;
+
+	drmIoctl(drm_fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn);	//get connector resource counts
+	//Check if the connector is OK to use (connected to something)
 	/*
-	void *fb_base[10];
-	long fb_w[10];
-	long fb_h[10];
-
-	//Loop though all available connectors
-	int i;
-	for (i=0;i<res.count_connectors;i++)
+	   if (conn.count_encoders<1 || conn.count_modes<1 || !conn.encoder_id || !conn.connection)
+	   {
+	   printf("[Connect ID 0x%x]Not connected, found conn.count_encoders %d,conn.count_modes %d, conn.encoder_id  flag is %d ,conn.connection flag is %d\n",
+	   connector_id,conn.count_encoders,conn.count_modes,conn.encoder_id ,conn.connection );
+	   return;
+	   }
+	   */
+	if ( 1/* connector_status_connected*/ != conn.connection)
 	{
-	*/
-		struct drm_mode_modeinfo conn_mode_buf[20]={0};
-		uint64_t	conn_prop_buf[20]={0},
-					conn_propval_buf[20]={0},
-					conn_enc_buf[20]={0};
-
-		struct drm_mode_get_connector conn={0};
-
-		conn.connector_id=connector_id;
-
-		drmIoctl(drm_fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn);	//get connector resource counts
-		//Check if the connector is OK to use (connected to something)
-		if (conn.count_encoders<1 || conn.count_modes<1 || !conn.encoder_id || !conn.connection)
-		{
-			printf("[Connect ID 0x%x]Not connected\n",connector_id);
-			return;
-		}
-		successtip();
-		printf("[Connect ID 0x%x]is connected,count_modes is %d\n",connector_id,conn.count_modes);
-
-		conn.modes_ptr=(uint64_t)conn_mode_buf;
-		conn.props_ptr=(uint64_t)conn_prop_buf;
-		conn.prop_values_ptr=(uint64_t)conn_propval_buf;
-		conn.encoders_ptr=(uint64_t)conn_enc_buf;
-		drmIoctl(drm_fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn);	//get connector resources
-
-
-
-		/*
-//------------------------------------------------------------------------------
-//Creating a dumb buffer
-//------------------------------------------------------------------------------
-		struct drm_mode_create_dumb create_dumb={0};
-		struct drm_mode_map_dumb map_dumb={0};
-		struct drm_mode_fb_cmd cmd_dumb={0};
-
-		//If we create the buffer later, we can get the size of the screen first.
-		//This must be a valid mode, so it's probably best to do this after we find
-		//a valid crtc with modes.
-		create_dumb.width = conn_mode_buf[0].hdisplay;
-		create_dumb.height = conn_mode_buf[0].vdisplay;
-		create_dumb.bpp = 32;
-		create_dumb.flags = 0;
-		create_dumb.pitch = 0;
-		create_dumb.size = 0;
-		create_dumb.handle = 0;
-		ioctl(dri_fd, DRM_IOCTL_MODE_CREATE_DUMB, &create_dumb);
-
-		cmd_dumb.width=create_dumb.width;
-		cmd_dumb.height=create_dumb.height;
-		cmd_dumb.bpp=create_dumb.bpp;
-		cmd_dumb.pitch=create_dumb.pitch;
-		cmd_dumb.depth=24;
-		cmd_dumb.handle=create_dumb.handle;
-		ioctl(dri_fd,DRM_IOCTL_MODE_ADDFB,&cmd_dumb);
-
-		map_dumb.handle=create_dumb.handle;
-		ioctl(dri_fd,DRM_IOCTL_MODE_MAP_DUMB,&map_dumb);
-
-		fb_base[i] = mmap(0, create_dumb.size, PROT_READ | PROT_WRITE, MAP_SHARED, dri_fd, map_dumb.offset);
-		fb_w[i]=create_dumb.width;
-		fb_h[i]=create_dumb.height;
-
-//------------------------------------------------------------------------------
-//Kernel Mode Setting (KMS)
-//------------------------------------------------------------------------------
-
-		printf("%d : mode: %d, prop: %d, enc: %d\n",conn.connection,conn.count_modes,conn.count_props,conn.count_encoders);
-		printf("modes: %dx%d FB: %p\n",conn_mode_buf[0].hdisplay,conn_mode_buf[0].vdisplay,fb_base[i]);
-
-		struct drm_mode_get_encoder enc={0};
-
-		enc.encoder_id=conn.encoder_id;
-		ioctl(dri_fd, DRM_IOCTL_MODE_GETENCODER, &enc);	//get encoder
-
-		struct drm_mode_crtc crtc={0};
-
-		crtc.crtc_id=enc.crtc_id;
-		ioctl(dri_fd, DRM_IOCTL_MODE_GETCRTC, &crtc);
-
-		crtc.fb_id=cmd_dumb.fb_id;
-		crtc.set_connectors_ptr=(uint64_t)&res_conn_buf[i];
-		crtc.count_connectors=1;
-		crtc.mode=conn_mode_buf[0];
-		crtc.mode_valid=1;
-		ioctl(dri_fd, DRM_IOCTL_MODE_SETCRTC, &crtc);
+		printf("[Connect ID 0x%x]Not connected conn.connection flag is %d\n",
+				connector_id,conn.connection );
+		return;
 	}
-*/
+	successtip();
+	printf("[Connect ID 0x%x] is  connected, found conn.count_encoders %d,conn.count_modes %d, conn.encoder_id is %d ,conn.connection flag is %d\n",
+			connector_id,conn.count_encoders,conn.count_modes,conn.encoder_id ,conn.connection );
+	//printf("[Connect ID 0x%x]is connected,count_modes is %d\n",connector_id,conn.count_modes);
+
+	conn.modes_ptr=(uint64_t)conn_mode_buf;
+	conn.props_ptr=(uint64_t)conn_prop_buf;
+	conn.prop_values_ptr=(uint64_t)conn_propval_buf;
+	conn.encoders_ptr=(uint64_t)conn_enc_buf; //useless ? is it same as encoder_id ?
+	drmIoctl(drm_fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn);	//get connector resources
+
+	struct drm_mode_crtc crtc = test_encoder_feature(drm_fd ,conn.encoder_id);
+
+	printf("Creating Dump Buffer for Buf0\n");
+	__u32 fb_id = test_create_dump_buf(drm_fd, conn_mode_buf[0].hdisplay, conn_mode_buf[0].vdisplay);
+
+	printf("Displaying Frame Buffer [%d(0x%x)] in dumb-buff to Crtc [%d] via connector [%d(0x%x)]\n",
+			fb_id,fb_id,crtc.crtc_id,connector_id,connector_id);
+	display_dumbbuf_to_crtc(drm_fd,crtc,fb_id,connector_id,conn_mode_buf[0]);
 
 }
 
@@ -316,6 +417,7 @@ void test_getresources(int drm_fd)
 		successtip();
 		printf("DRM_IOCTL_MODE_GETRESOURCES fb: %d, crtc: %d, conn: %d, enc: %d\n",
 				res.count_fbs,res.count_crtcs,res.count_connectors,res.count_encoders);
+		/*
 		printf("Before Double Resource Get\n");
 		int i;
 		for (i=0;i<res.count_connectors;i++)
@@ -324,7 +426,9 @@ void test_getresources(int drm_fd)
 		}
 
 		printf("After Double Resource Get\n");
+		*/
         	drmIoctl(drm_fd, DRM_IOCTL_MODE_GETRESOURCES, &res);
+		int i = 0;
 		for (i=0;i<res.count_connectors;i++)
 		{
 			test_getconnection_info(drm_fd,res_conn_buf[i]);
