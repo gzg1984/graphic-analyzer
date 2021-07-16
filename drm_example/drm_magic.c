@@ -261,31 +261,30 @@ void test_map_dumb(int drm_fd,const struct drm_mode_create_dumb create_dumb)
 		}
 	printf("End put random color\n");
 }
-__u32 test_create_dump_buf(int drm_fd , __u32 width, __u32 height)
+__u32 test_create_dump_buf(int drm_fd , __u32 width, __u32 height,struct drm_mode_create_dumb* pcreate_dumb)
 {
 	//------------------------------------------------------------------------------
 	//Creating a dumb buffer
 	//------------------------------------------------------------------------------
-	struct drm_mode_create_dumb create_dumb={0};
 
 	//If we create the buffer later, we can get the size of the screen first.
 	//This must be a valid mode, so it's probably best to do this after we find
 	//a valid crtc with modes.
-	create_dumb.width = width;
-	create_dumb.height = height;
-	create_dumb.bpp = 32;
-	create_dumb.flags = 0;
-	create_dumb.pitch = 0;
-	create_dumb.size = 0;
-	create_dumb.handle = 0;
+	pcreate_dumb->width = width;
+	pcreate_dumb->height = height;
+	pcreate_dumb->bpp = 32;
+	pcreate_dumb->flags = 0;
+	pcreate_dumb->pitch = 0;
+	pcreate_dumb->size = 0;
+	pcreate_dumb->handle = 0;
 	printf("Creating Dump Buffer width %d, height %d\n",width,height);
-	int result = drmIoctl(drm_fd, DRM_IOCTL_MODE_CREATE_DUMB, &create_dumb);
+	int result = drmIoctl(drm_fd, DRM_IOCTL_MODE_CREATE_DUMB, pcreate_dumb);
 	if ( result == 0 )
 	{
 		successtip();
-		printf("DRM_IOCTL_MODE_CREATE_DUMB success\n");
-		test_map_dumb(drm_fd,create_dumb);
-		return test_create_framebuffer(drm_fd,create_dumb);
+		printf("DRM_IOCTL_MODE_CREATE_DUMB success, handle is %d\n",pcreate_dumb->handle);
+		test_map_dumb(drm_fd,*pcreate_dumb);
+		return test_create_framebuffer(drm_fd,*pcreate_dumb);
 	}
 	else
 	{
@@ -403,6 +402,147 @@ void test_encoder_feature(int drm_fd, __u32 encoder_id, __u32 count_encoders,uin
 	*/
 
 }
+
+
+void test_fill_colors( uint8_t * primed_framebuffer,uint_fast64_t const size_in_pixels ,uint32_t const width_pixel,
+		uint32_t const diff_between_width_and_stride)
+{
+        /* The colors table */
+        uint32_t const red   = (0xff<<16);
+        uint32_t const green = (0xff<<8);
+        uint32_t const blue  = (0xff);
+        uint32_t const colors[] = {red, green, blue};
+        uint_fast64_t pixel = 0;
+	/* While we didn't get a 'q' + Enter or reached the bottom of the
+         * screen... */
+        while ( pixel < size_in_pixels) {
+                /* Choose a random color. 3 being the size of the colors table. */
+                uint32_t current_color = colors[rand()%3];
+
+                /* Color every pixel of the row.
+                 * Now, the framebuffer is linear. Meaning that the first pixel of
+                 * the first row should be at index 0, but the first pixel of the
+                 * second row should be at index (stride+0) and the first pixel of
+                 * the n-th row should be at (n*stride+0).
+                 *
+                 * Instead of computing the value, we'll just increment the "pixel"
+                 * index and accumulate the padding once done with the current row,
+                 * in order to be ready to start for the next row.
+                 */
+                for (uint_fast32_t p = 0; p < width_pixel; p++)
+                        ((uint32_t *) primed_framebuffer)[pixel++] = current_color;
+                pixel += diff_between_width_and_stride;
+                //LOG("pixel : %lu, size : %lu\n", pixel, size_in_pixels);
+		usleep(10000);
+        }
+
+}
+
+
+void test_map_prime_fd(int drm_fd,int dma_buf_fd,__u64 dumb_size,__u32 dumb_pitch ,__u32 dumb_width,__u32 dumb_height )
+{
+	 /* Map the exported buffer, using the PRIME File descriptor */
+        /* That ONLY works if the DRM driver implements gem_prime_mmap.
+         * This function is not implemented in most of the DRM drivers for
+         * GPU with discrete memory. Meaning that it will surely fail with
+         * Radeon, AMDGPU and Nouveau drivers for desktop cards ! */
+	/*
+        uint8_t * primed_framebuffer = mmap(
+                0, create_request.size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                dma_buf_fd, 0);
+		*/
+        uint8_t * primed_framebuffer = mmap(
+                0, dumb_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                dma_buf_fd, 0);
+        int ret = errno;
+
+        /* Bail out if we could not map the framebuffer using this method */
+        if (primed_framebuffer == NULL || primed_framebuffer == MAP_FAILED) {
+                printf( "Could not map buffer exported through PRIME : %s (%d)\n"
+                        "Buffer : %p\n",
+                        strerror(ret), ret,
+                        primed_framebuffer);
+                return;
+        }
+
+        printf("Buffer mapped !\n");
+
+        /* The fun begins ! At last !
+         * We'll do something simple :
+         * We'll lit a row of pixel, on the screen, starting from the top,
+         * down to the bottom of screen, using either Red, Blue or Green
+         * randomly, each time we press Enter.
+         * If we press 'q' and then Enter, the process will stop.
+         * The process will also stop once we've reached the bottom of the
+         * screen.
+         */
+        uint32_t const bytes_per_pixel = 4;
+        uint_fast64_t size = dumb_size;
+
+        /* Cleanup the framebuffer */
+        memset(primed_framebuffer, 0, size);
+
+
+        /* Pitch is the stride in bytes.
+         * However, for our purpose we'd like to know the stride in pixels.
+         * So we'll divide the pitch (in bytes) by the number of bytes
+         * composing a pixel to get that information.
+         */
+        uint32_t const stride_pixel = dumb_pitch / bytes_per_pixel;
+        uint32_t const width_pixel  = dumb_width;
+
+	/* The width is padded so that each row starts with a specific
+         * alignment. That means that we have useless pixels that we could
+         * avoid dealing with in the first place.
+         * Now, it might be faster to just lit these useless pixels and get
+         * done with it. */
+        uint32_t const diff_between_width_and_stride =
+                stride_pixel - width_pixel;
+        uint_fast64_t const size_in_pixels =
+                dumb_height * stride_pixel;
+
+
+
+	test_fill_colors(primed_framebuffer,size_in_pixels,width_pixel,diff_between_width_and_stride );
+
+        munmap(primed_framebuffer, dumb_size);
+
+}
+void test_prime_feaute(int drm_fd,__u32 handle,__u64 size ,__u32 pitch,__u32 width,__u32 height)
+{
+	/* For this test only : Export our dumb buffer using PRIME */
+	/* This will provide us a PRIME File Descriptor that we'll use to
+	 * map the represented buffer. This could be also be used to reimport
+	 * the GEM buffer into another GPU */
+	struct drm_prime_handle prime_request = {
+		//.handle = create_request.handle,
+		.handle = handle,
+		.flags  = DRM_CLOEXEC | DRM_RDWR,
+		.fd     = -1
+	};
+
+	int ret = drmIoctl(drm_fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &prime_request);
+	int const dma_buf_fd = prime_request.fd;
+	if ( ret == 0 )
+	{
+		successtip();
+		printf("DRM_IOCTL_PRIME_HANDLE_TO_FD [%d] success:[%d]\n",
+				handle,prime_request.fd);
+		test_map_prime_fd(drm_fd,dma_buf_fd,size, pitch,width,height);
+	}
+	else
+	{
+		/* If we could not export the buffer, bail out since that's the
+		 * purpose of our test */
+		failtip();
+		printf("DRM_IOCTL_PRIME_HANDLE_TO_FD %d failed : %d, %m \n",handle,ret);
+		printf("Could not export buffer : %s (%d) - FD : %d\n",
+				strerror(ret), ret,
+				dma_buf_fd);
+	}
+
+
+}
 void test_getconnection_info(int drm_fd,uint32_t connector_id)
 {
 	struct drm_mode_modeinfo conn_mode_buf[20]={0};
@@ -447,9 +587,11 @@ void test_getconnection_info(int drm_fd,uint32_t connector_id)
 		printf("DRM_IOCTL_MODE_GETCONNECTOR [%d] success\n", connector_id);
 
 		printf("Creating Dump Buffer for Buf0\n");
-		__u32 fb_id = test_create_dump_buf(drm_fd, conn_mode_buf[0].hdisplay, conn_mode_buf[0].vdisplay);
+		struct drm_mode_create_dumb create_dumb={0};
+		__u32 fb_id = test_create_dump_buf(drm_fd, conn_mode_buf[0].hdisplay, conn_mode_buf[0].vdisplay,&create_dumb);
 
 		test_encoder_feature(drm_fd ,conn.encoder_id, conn.count_encoders, conn_enc_buf,fb_id,connector_id,conn_mode_buf[0]);
+		test_prime_feaute(drm_fd,create_dumb.handle,create_dumb.size,create_dumb.pitch,create_dumb.width,create_dumb.height);
 
 	}
 	else
