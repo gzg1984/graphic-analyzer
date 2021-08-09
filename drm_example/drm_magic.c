@@ -77,6 +77,7 @@ void test_getparam_feature (int drm_fd)
 	}
 }
 
+unsigned int global_ctx_id;
 void test_context_create(int drm_fd)
 {
 	/* test original create */
@@ -89,6 +90,7 @@ void test_context_create(int drm_fd)
 		successtip();
 		printf("DRM_IOCTL_I915_GEM_CONTEXT_CREATE with original arg success,ctx_id %d, 0x%x\n",
 				ctx_create.ctx_id,ctx_create.ctx_id);
+		global_ctx_id=ctx_create.ctx_id;
 	}
 	else
 	{
@@ -138,6 +140,14 @@ void test_softpin(int drm_fd)
 #define BATCH_BO_SIZE (256 * 4096)
 #define DATA_BO_SIZE 4096
 
+static inline uintptr_t
+ALIGN(uintptr_t value, int32_t alignment)
+{
+   //assert(util_is_power_of_two_nonzero(alignment));
+   return (((value) + (alignment) - 1) & ~((alignment) - 1));
+}
+
+
 void test_create_gem(int drm_fd)
 {
 	// Create the batch buffer
@@ -148,19 +158,207 @@ void test_create_gem(int drm_fd)
 	if(ret == 0)
 	{
 		successtip();
-		printf("DRM_IOCTL_I915_GEM_CREATE %d\n",gem_create.handle);
+		printf("DRM_IOCTL_I915_GEM_CREATE success , handle %d\n",gem_create.handle);
 	}
 	else
 	{
 		failtip();
 		printf("DRM_IOCTL_I915_GEM_CREATE ret %d, %m\n",ret);
 	}
+
+	uint32_t batch_bo_handle = gem_create.handle;
 	/*
-	batch_bo_handle = gem_create.handle;
 #if GFX_VER >= 8
-	batch_bo_addr = 0xffffffffdff70000ULL;
 #endif
 */
+uint64_t	batch_bo_addr = 0xffffffffdff70000ULL;
+
+	struct drm_i915_gem_caching gem_caching ;
+	gem_caching.handle = batch_bo_handle;
+	gem_caching.caching = I915_CACHING_CACHED;
+	ret = drmIoctl(drm_fd, DRM_IOCTL_I915_GEM_SET_CACHING, (void *)&gem_caching);
+	if(ret == 0)
+	{
+		successtip();
+		printf("DRM_IOCTL_I915_GEM_SET_CACHING success \n");
+	}
+	else
+	{
+		failtip();
+		printf("DRM_IOCTL_I915_GEM_SET_CACHING ret %d, %m\n",ret);
+	}
+
+
+	struct drm_i915_gem_mmap gem_mmap ;
+	gem_mmap.handle = batch_bo_handle;
+	gem_mmap.offset = 0;
+	gem_mmap.size = BATCH_BO_SIZE;
+	gem_mmap.flags = 0;
+	ret = drmIoctl(drm_fd, DRM_IOCTL_I915_GEM_MMAP, (void *)&gem_mmap);
+	//batch_map = (void *)(uintptr_t)gem_mmap.addr_ptr;
+	if(ret == 0)
+	{
+		successtip();
+		printf("DRM_IOCTL_I915_GEM_MMAP success ,map addr is %p\n",(void *)gem_mmap.addr_ptr);
+	}
+	else
+	{
+		failtip();
+		printf("DRM_IOCTL_I915_GEM_MMAP ret %d, %m\n",ret);
+	}
+
+
+	 /* The requirement for using I915_EXEC_NO_RELOC are:
+       *
+       *   The addresses written in the objects must match the corresponding
+       *   reloc.gtt_offset which in turn must match the corresponding
+       *   execobject.offset.
+       *
+       *   Any render targets written to in the batch must be flagged with
+       *   EXEC_OBJECT_WRITE.
+       *
+       *   To avoid stalling, execobject.offset should match the current
+       *   address of that object within the active context.
+       */
+	/*
+      int flags = I915_EXEC_NO_RELOC | I915_EXEC_RENDER;
+
+      if (batch->needs_sol_reset)
+         flags |= I915_EXEC_GEN7_SOL_RESET;
+
+      / * Set statebuffer relocations * /
+      const unsigned state_index = batch->state.bo->index;
+      if (state_index < batch->exec_count &&
+          batch->exec_bos[state_index] == batch->state.bo) {
+         struct drm_i915_gem_exec_object2 *entry =
+            &batch->validation_list[state_index];
+         assert(entry->handle == batch->state.bo->gem_handle);
+         entry->relocation_count = batch->state_relocs.reloc_count;
+         entry->relocs_ptr = (uintptr_t) batch->state_relocs.relocs;
+      }
+
+      / * Set batchbuffer relocations * /
+      struct drm_i915_gem_exec_object2 *entry = &batch->validation_list[0];
+      assert(entry->handle == batch->batch.bo->gem_handle);
+      entry->relocation_count = batch->batch_relocs.reloc_count;
+      entry->relocs_ptr = (uintptr_t) batch->batch_relocs.relocs;
+
+      if (batch->use_batch_first) {
+         flags |= I915_EXEC_BATCH_FIRST | I915_EXEC_HANDLE_LUT;
+      } else {
+         / * Move the batch to the end of the validation list * /
+         struct drm_i915_gem_exec_object2 tmp;
+         struct brw_bo *tmp_bo;
+         const unsigned index = batch->exec_count - 1;
+
+         tmp = *entry;
+         *entry = batch->validation_list[index];
+         batch->validation_list[index] = tmp;
+
+         tmp_bo = batch->exec_bos[0];
+         batch->exec_bos[0] = batch->exec_bos[index];
+         batch->exec_bos[index] = tmp_bo;
+      }
+
+      ret = execbuffer(brw->screen->fd, batch, brw->hw_ctx,
+                       4 * USED_BATCH(*batch),
+                       in_fence_fd, out_fence_fd, flags);
+
+      throttle(brw);
+      */
+      struct drm_i915_gem_exec_object2 entry;
+      memset(&entry, 0, sizeof(entry));
+      entry.handle = batch_bo_handle;
+      entry.relocation_count=0;
+      entry.relocs_ptr=0;
+ //     entry.flags = EXEC_OBJECT_SUPPORTS_48B_ADDRESS |
+                      EXEC_OBJECT_PINNED |
+                      EXEC_OBJECT_WRITE;
+      entry.flags = EXEC_OBJECT_SUPPORTS_48B_ADDRESS |
+                      EXEC_OBJECT_PINNED ;
+      //entry.offset = data_bo_addr;
+//      entry.offset = batch_bo_addr;
+//         batch_bo_addr = 0xffffffffdff70000ULL;
+//   data_bo_addr = 0xffffffffefff0000ULL;
+
+entry.offset = 0xffffffffefff0000ULL;
+
+      /*
+       *    / * Set batchbuffer relocations * /
+   struct drm_i915_gem_exec_object2 *entry = &batch->validation_list[0];
+   assert(entry->handle == batch->command.bo->gem_handle);
+   entry->relocation_count = batch->command.relocs.reloc_count;
+   entry->relocs_ptr = (uintptr_t)batch->command.relocs.relocs;
+   */
+
+   struct drm_i915_gem_execbuffer2 execbuf = {
+      //.buffers_ptr = (uintptr_t)batch->validation_list,
+      .buffers_ptr = (uintptr_t)&entry,
+      //.buffer_count = batch->exec_count,
+      .buffer_count = 1,
+      .batch_start_offset = 0,
+      /* This must be QWord aligned. */
+      .batch_len = ALIGN(sizeof(entry), 8),
+      .flags = I915_EXEC_RENDER |
+               I915_EXEC_NO_RELOC |
+               I915_EXEC_BATCH_FIRST |
+               I915_EXEC_HANDLE_LUT,
+      //.rsvd1 = batch->hw_ctx_id, /* rsvd1 is actually the context ID */
+      .rsvd1 = global_ctx_id, /* rsvd1 is actually the context ID */
+   };
+
+   /*
+   if (num_fences(batch)) {
+      execbuf.flags |= I915_EXEC_FENCE_ARRAY;
+      execbuf.num_cliprects = num_fences(batch);
+      execbuf.cliprects_ptr =
+         (uintptr_t)util_dynarray_begin(&batch->exec_fences);
+   }
+   */
+
+//   int ret = 0;
+   /*
+      if (!batch->screen->no_hw &&
+      intel_ioctl(batch->screen->fd, DRM_IOCTL_I915_GEM_EXECBUFFER2, &execbuf))
+      ret = -errno;
+      */
+   ret = drmIoctl(drm_fd, DRM_IOCTL_I915_GEM_EXECBUFFER2, &execbuf);
+   if(ret == 0)
+   {
+	   successtip();
+	   printf("DRM_IOCTL_I915_GEM_EXECBUFFER2 success \n");
+
+	   struct   drm_i915_gem_wait gem_wait ;
+	   gem_wait.bo_handle = batch_bo_handle;
+	   gem_wait.timeout_ns = INT64_MAX;
+	   ret = drmIoctl(drm_fd, DRM_IOCTL_I915_GEM_WAIT, (void *)&gem_wait);
+	   if(ret == 0)
+	   {
+		   successtip();
+		   printf("DRM_IOCTL_I915_GEM_WAIT success \n");
+	   }
+	   else
+	   {
+		   failtip();
+		   printf("DRM_IOCTL_I915_GEM_WAIT ret %d, %m\n",ret);
+	   }
+
+
+	   int i = 0;
+	   for(i=0 ;i <100;i++)
+	   {
+		   memset((void*)gem_mmap.addr_ptr,1+100*i,BATCH_BO_SIZE);
+		   usleep(10000);
+	   }
+   }
+   else
+   {
+	   failtip();
+	   printf("DRM_IOCTL_I915_GEM_EXECBUFFER2 ret %d, %m\n",ret);
+   }
+
+
+
 }
 
 
@@ -644,7 +842,39 @@ void test_getresources(int drm_fd)
 
 }
 
+void test_drm_gem(int drm_fd)
+{
+	struct drm_gem_flink gf;
+	memset(&gf,0,sizeof(gf));
+	gf.handle=1;
+	int ret = drmIoctl(drm_fd,DRM_IOCTL_GEM_FLINK,&gf);
+	if ( ret == 0)
+	{
+		successtip();
+		printf("DRM_IOCTL_GEM_FLINK success, got name %d\n",gf.name);
+		struct drm_gem_open go;
+		memset(&go,0,sizeof(go));
+		go.name=gf.name;
+		ret = drmIoctl(drm_fd,DRM_IOCTL_GEM_OPEN,&open);
+		if ( ret == 0)
+		{
+			successtip();
+			printf("DRM_IOCTL_GEM_OPEN success\n");
+		}
+		else
+		{
+			failtip();
+			printf("DRM_IOCTL_GEM_OPEN %d failed : %d, %m\n",go.name,ret);
 
+		}
+	}
+	else
+	{
+		failtip();
+		printf("DRM_IOCTL_GEM_FLINK %d failed : %d, %m\n",gf.handle,ret);
+
+	}
+}
 
 int main(int argc,char** argv)
 {
@@ -670,6 +900,7 @@ int main(int argc,char** argv)
 		test_master_feature(drm_fd);
 		test_version_feature(drm_fd);
 		test_getresources(drm_fd);
+		test_drm_gem(drm_fd);
 		close(drm_fd);
 	}
 
