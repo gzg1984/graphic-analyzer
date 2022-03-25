@@ -18,8 +18,16 @@ float colorData[] = {
   
 GLuint vaoHandle;//vertex array object  
   
-void main(const char *VShaderFile,const char *FShaderFile)  
+int main(int ac,char** av)  
 {  
+    glutInit(&ac, av);
+    glutCreateWindow("GLEW Test");
+    GLenum err = glewInit();
+    if( GLEW_OK != err )
+    {
+        printf("Error initializing GLEW: %s\n" , glewGetErrorString(err) );
+	return -1;
+    }
     //1、查看GLSL和OpenGL的版本  
     const GLubyte *renderer = glGetString( GL_RENDERER );  
     const GLubyte *vendor = glGetString( GL_VENDOR );  
