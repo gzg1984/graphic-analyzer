@@ -1,4 +1,7 @@
-#include <GL/glew.h>  
+
+
+
+    #include <GL/glew.h>  
   
 #include <GL/glut.h>  
 #include <stdio.h>  
@@ -18,16 +21,30 @@ float colorData[] = {
   
 GLuint vaoHandle;//vertex array object  
   
+  // glut window handle
+static int window;
+
 int main(int ac,char** av)  
 { 
-    glutInit(&ac, av);
-    glutCreateWindow("GLEW Test");
-    GLenum err = glewInit();
-    if( GLEW_OK != err )
+
+    int argc = 1;
+    char *argv[1] = {(char*)"dummy"};
+
+    // Use glx context/surface
+    glutInit(&argc, argv);
+    glutInitDisplayMode(GLUT_RGB | GLUT_SINGLE);
+    glutInitWindowSize(16, 16);
+
+    window = glutCreateWindow("AppEncGL");
+    if (!window)
     {
-        printf("Error initializing GLEW: %s\n" , glewGetErrorString(err) );
-	return -1;
+        printf("\nUnable to create GLUT window.\n" );
+        return -1;
     }
+
+    glutHideWindow();
+
+
     //1、查看GLSL和OpenGL的版本  
     const GLubyte *renderer = glGetString( GL_RENDERER );  
     const GLubyte *vendor = glGetString( GL_VENDOR );  
