@@ -8,10 +8,10 @@ glvendor:glvendor.c
 	gcc -o $@ $^ -lGL -lglut -lGLU -lGLEW
 
 glxvendor:glxvendor.c
-	gcc -o $@ $^ -lGL -lglut -lGLU -lGLEW
+	gcc -o $@ $^ -lGL -lglut -lGLU -lGLEW 
 
 eglvendor:eglvendor.c
 	gcc -o $@ $^ -lGL -lglut -lGLU -lGLEW -lX11 -lEGL
 
 clean:
-	rm -rf abgr glvendor
+	rm -rf abgr glvendor eglvendor glxvendor
